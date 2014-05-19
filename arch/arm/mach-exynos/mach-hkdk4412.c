@@ -59,7 +59,6 @@
 #include <mach/map.h>
 #include <mach/regs-pmu.h>
 #include <mach/dwmci.h>
-#include <drm/exynos_drm.h>
 
 #include "common.h"
 #include "pmic-77686.h"
@@ -197,8 +196,8 @@ static struct i2c_board_info hkdk4412_i2c_devs7[] __initdata = {
 
 #if defined(CONFIG_ODROID_U2)
 /* for u3 I/O shield board */
-#define		GPIO_I2C4_SDA	EXYNOS4_GPX1(1)
-#define		GPIO_I2C4_SCL	EXYNOS4_GPX1(0)
+#define		GPIO_I2C4_SDA	EXYNOS4_GPX1(1) /* GPIO-PIN 200 */
+#define		GPIO_I2C4_SCL	EXYNOS4_GPX1(0) /* GPIO-PIN 199 */
 
 static struct 	i2c_gpio_platform_data 	i2c4_gpio_platdata = {
 	.sda_pin = GPIO_I2C4_SDA,
@@ -303,26 +302,33 @@ static struct platform_pwm_backlight_data hkdk4412_bl_data = {
 	.pwm_period_ns	= 1000,
 };
 
-#if defined(CONFIG_LCD_LP101WH1) && defined(CONFIG_DRM_EXYNOS_FIMD)
-static struct exynos_drm_fimd_pdata drm_fimd_pdata = {
-	.panel = {
-		.timing = {
-			.left_margin 	= 80,
-			.right_margin 	= 48,
-			.upper_margin 	= 14,
-			.lower_margin 	= 3,
-			.hsync_len 	= 32,
-			.vsync_len 	= 5,
-			.xres 		= 1360,
-			.yres 		= 768,
-		},
-	},
-	.vidcon0	= VIDCON0_VIDOUT_RGB | VIDCON0_PNRMODE_RGB,
-	.vidcon1	= VIDCON1_INV_HSYNC | VIDCON1_INV_VSYNC | VIDCON1_INV_VCLK,
-	.default_win 	= 0,
-	.bpp 		= 32,
+#if defined(CONFIG_LCD_LP101WH1)
+static struct s3c_fb_pd_win hkdk4412_fb_win0 = {
+	.max_bpp	= 32,
+	.default_bpp	= 24,
+	.xres		= 1360,
+	.yres		= 768,
 };
-	
+
+static struct fb_videomode hkdk4412_lcd_timing = {
+	.left_margin	= 80,
+	.right_margin	= 48,
+	.upper_margin	= 14,
+	.lower_margin	= 3,
+	.hsync_len	= 32,
+	.vsync_len	= 5,
+	.xres		= 1360,
+	.yres		= 768,
+};
+
+static struct s3c_fb_platdata hkdk4412_fb_pdata __initdata = {
+	.win[0]		= &hkdk4412_fb_win0,
+	.vtiming	= &hkdk4412_lcd_timing,
+	.vidcon0	= VIDCON0_VIDOUT_RGB | VIDCON0_PNRMODE_RGB,
+	.vidcon1	= VIDCON1_INV_HSYNC | VIDCON1_INV_VSYNC,
+	.setup_gpio	= exynos4_fimd0_gpio_setup_24bpp,
+};
+
 static void lcd_lp101wh1_set_power(struct plat_lcd_data *pd,
 				   unsigned int power)
 {
@@ -342,7 +348,7 @@ static struct platform_device hkdk4412_lcd_lp101wh1 = {
 		.platform_data	= &hkdk4412_lcd_lp101wh1_data,
 	},
 };
-#endif // LCD
+#endif
 
 /* GPIO KEYS */
 static struct gpio_keys_button hkdk4412_gpio_keys_tables[] = {
@@ -486,7 +492,7 @@ static struct s3c64xx_spi_csinfo spi1_csi = {
 static struct spi_board_info spi1_board_info[] __initdata = {
 	[0] = {
 		.modalias = "spidev",
-		.max_speed_hz = 10 * 1000 * 1000, // 10 mhz
+		.max_speed_hz = 40 * 1000 * 1000, // 10 mhz
 		.bus_num = 1,
 		.chip_select = 0,
 		.mode = SPI_MODE_3,
@@ -494,17 +500,21 @@ static struct spi_board_info spi1_board_info[] __initdata = {
 	},
 };
 
+#if defined(CONFIG_ODROID_IOBOARD)
+static struct platform_device odroid_ioboard_spi = {
+	.name			= "spidev",
+	.id 			= -1,
+};
+#endif
+
 static struct platform_device *hkdk4412_devices[] __initdata = {
 	&s3c_device_hsmmc2,
 	&s3c_device_i2c0,
 	&s3c_device_i2c1,
 	&gpio_device_i2c2,
 	&s3c_device_i2c3,
-#if defined(CONFIG_ODROID_U2)
-	&gpio_device_i2c4,
 #if defined(CONFIG_W1_MASTER_GPIO) || defined(CONFIG_W1_MASTER_GPIO_MODULE)
         &odroidu3_w1_device,
-#endif
 #endif
 	&s3c_device_i2c7,
 	&s3c_device_rtc,
@@ -524,6 +534,7 @@ static struct platform_device *hkdk4412_devices[] __initdata = {
 	&s5p_device_mfc_l,
 	&s5p_device_mfc_r,
 	&s5p_device_g2d,
+	&s5p_device_jpeg,
 	&mali_gpu_device,
 #if defined(CONFIG_S5P_DEV_TV)
 	&s5p_device_hdmi,
@@ -535,7 +546,7 @@ static struct platform_device *hkdk4412_devices[] __initdata = {
 	&exynos4_device_ohci,
 	&exynos_device_dwmci,
 	&hkdk4412_leds_gpio,
-#if defined(CONFIG_LCD_LP101WH1) && !defined(CONFIG_ODROID_U2)
+#if defined(CONFIG_LCD_LP101WH1)
 	&hkdk4412_lcd_lp101wh1,
 #endif
 	&hkdk4412_gpio_keys,
@@ -551,6 +562,9 @@ static struct platform_device *hkdk4412_devices[] __initdata = {
 	&odroid_fan,
 #endif
 	&s3c64xx_device_spi1,
+#if defined(CONFIG_ODROID_IOBOARD)
+	&odroid_ioboard_spi,
+#endif
 };
 
 #if defined(CONFIG_S5P_DEV_TV)
@@ -663,6 +677,10 @@ static void __init hkdk4412_machine_init(void)
 	hkdk4412_ohci_init();
 	s3c_hsotg_set_platdata(&hkdk4412_hsotg_pdata);
 
+#ifdef CONFIG_LCD_LP101WH1
+        s5p_fimd0_set_platdata(&hkdk4412_fb_pdata);
+#endif
+
 	s3c64xx_spi1_set_platdata(NULL, 0, 1);
 	spi_register_board_info(spi1_board_info, ARRAY_SIZE(spi1_board_info));
 
@@ -676,9 +694,8 @@ static void __init hkdk4412_machine_init(void)
 	i2c_register_board_info(8, &hdmiphy_info, 1);
 #endif
 
-#if defined(CONFIG_LCD_LP101WH1) && !defined(CONFIG_ODROID_U2)
-	s5p_device_fimd0.dev.platform_data = &drm_fimd_pdata;
-	exynos4_fimd0_gpio_setup_24bpp();
+#ifdef CONFIG_LCD_LP101WH1
+	s5p_fimd0_set_platdata(&hkdk4412_fb_pdata);
 #endif
 	platform_add_devices(hkdk4412_devices, ARRAY_SIZE(hkdk4412_devices));
 
